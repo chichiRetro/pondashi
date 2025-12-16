@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EMPポン出しくん</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Courier New', monospace;
+            background: linear-gradient(135deg, #1a0033 0%, #001a33 50%, #1a0026 100%);
+            min-height: 100vh;
+            color: white;
+            overflow-x: hidden;
+            position: relative;
+        }
+
+        /* Grid background pattern */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: 
+                repeating-linear-gradient(0deg, rgba(0, 255, 255, 0.1) 0px, transparent 1px, transparent 30px),
+                repeating-linear-gradient(90deg, rgba(0, 255, 255, 0.1) 0px, transparent 1px, transparent 30px);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+            position: relative;
+            z-index: 1;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding-top: 20px;
+        }
+
+        .header h1 {
+            font-size: 3em;
+            font-weight: 900;
+            background: linear-gradient(90deg, #00ffff, #ff00ff, #ffff00);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            text-shadow: 0 0 30px rgba(0, 255, 255, 0.5);
+            letter-spacing: 5px;
+        }
+
+        .header p {
+            color: #00ffff;
+            font-size: 0.9em;
+            letter-spacing: 3px;
+            margin-top: 10px;
+        }
+
+        .controls {
+            background: rgba(0, 0, 0, 0.5);
+            border: 1px solid #00ffff;
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 30px;
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.3);
+        }
+
+        .controls h2 {
+            color: #ff00ff;
+            margin-bottom: 15px;
+            font-size: 1.2em;
+        }
+
+        .add-pad-form {
+            display: grid;
+            grid-template-columns: 2fr 3fr 1fr auto;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .add-pad-form input {
+            padding: 10px;
+            background: rgba(0, 0, 0, 0.7);
+            border: 1px solid #00ffff;
+            border-radius: 5px;
+            color: white;
+            font-family: 'Courier New', monospace;
+        }
+
+        .add-pad-form input:focus {
+            outline: none;
+            border-color: #ff00ff;
+            box-shadow: 0 0 10px rgba(255, 0, 255, 0.5);
+        }
+
+        .add-pad-form select {
+            padding: 10px;
+            background: rgba(0, 0, 0, 0.7);
+            border: 1px solid #00ffff;
+            border-radius: 5px;
+            color: white;
+            font-family: 'Courier New', monospace;
+        }
+
+        .add-pad-form button {
+            padding: 10px 20px;
+            background: linear-gradient(135deg, #00ffff, #ff00ff);
+            border: none;
+            border-radius: 5px;
+            color: white;
+            font-weight: bold;
+            cursor: pointer;
+            font-family: 'Courier New', monospace;
+            transition: all 0.3s;
+        }
+
+        .add-pad-form button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.7);
+        }
+
+        /* 4x4 Grid Container */
+        .pad-grid-container {
+            width: 100%;
+            max-width: 900px;
+            margin: 0 auto 30px;
+            aspect-ratio: 1;
+            background: rgba(0, 0, 0, 0.3);
+            border: 2px solid rgba(0, 255, 255, 0.3);
+            border-radius: 15px;
+            padding: 15px;
+        }
+
+        .pad-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            grid-template-rows: repeat(4, 1fr);
+            gap: 15px;
+            width: 100%;
+            height: 100%;
+        }
+
+        .pad {
+            position: relative;
+            cursor: pointer;
+            border-radius: 15px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.1s;
+            user-select: none;
+            min-height: 0;
+            padding: 15px;
+        }
+
+        .pad::before {
+            content: '';
+            position: absolute;
+            inset: -5px;
+            border-radius: 15px;
+            background: inherit;
+            filter: blur(12px);
+            opacity: 0.6;
+            z-index: -1;
+        }
+
+        .pad.active {
+            transform: scale(0.95);
+        }
+
+        .pad.playing::after {
+            content: '▶';
+            position: absolute;
+            top: 8px;
+            left: 8px;
+            font-size: 1.2em;
+            animation: pulse 1s infinite;
+        }
+
+        .pad.fading::after {
+            content: '⏸';
+            position: absolute;
+            top: 8px;
+            left: 8px;
+            font-size: 1.2em;
+            opacity: 0.5;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .pad-name {
+            font-size: 1.1em;
+            font-weight: bold;
+            text-transform: uppercase;
+            text-align: center;
+            word-break: break-word;
+            line-height: 1.2;
+        }
+
+        .pad-status {
+            display: flex;
+            gap: 5px;
+            align-items: center;
+            font-size: 0.8em;
+            margin-top: 8px;
+        }
+
+        .loop-indicator {
+            display: none;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .pad.looping .loop-indicator {
+            display: flex;
+        }
+
+        .pad-controls {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            display: flex;
+            gap: 5px;
+            z-index: 10;
+        }
+
+        .pad-control-btn {
+            width: 25px;
+            height: 25px;
+            border-radius: 50%;
+            background: rgba(0, 0, 0, 0.8);
+            border: 1px solid white;
+            color: white;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.9em;
+            transition: all 0.2s;
+        }
+
+        .pad-control-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.1);
+        }
+
+        .empty-cell {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 15px;
+            border: 1px dashed rgba(255, 255, 255, 0.1);
+        }
+
+        .instructions {
+            background: rgba(0, 0, 0, 0.5);
+            border: 1px solid;
+            border-image: linear-gradient(90deg, #00ffff, #ff00ff) 1;
+            border-radius: 15px;
+            padding: 20px;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+        }
+
+        .instruction-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .instruction-item.cyan {
+            color: #00ffff;
+        }
+
+        .instruction-item.pink {
+            color: #ff00ff;
+        }
+
+        .instruction-item.yellow {
+            color: #ffff00;
+        }
+
+        .instruction-item.orange {
+            color: #ffa500;
+        }
+
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 2em;
+            }
+            
+            .add-pad-form {
+                grid-template-columns: 1fr;
+            }
+
+            .pad-grid {
+                gap: 10px;
+            }
+
+            .pad-name {
+                font-size: 0.85em;
+            }
+
+            .pad {
+                padding: 10px;
+            }
+
+            .instructions {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Color variations for pads */
+        .pad.cyan {
+            background: linear-gradient(135deg, rgba(0, 255, 255, 0.8), rgba(0, 255, 255, 0.4));
+            border: 2px solid #00ffff;
+            box-shadow: 0 5px 20px rgba(0, 255, 255, 0.5);
+        }
+
+        .pad.pink {
+            background: linear-gradient(135deg, rgba(255, 0, 255, 0.8), rgba(255, 0, 255, 0.4));
+            border: 2px solid #ff00ff;
+            box-shadow: 0 5px 20px rgba(255, 0, 255, 0.5);
+        }
+
+        .pad.yellow {
+            background: linear-gradient(135deg, rgba(255, 255, 0, 0.8), rgba(255, 255, 0, 0.4));
+            border: 2px solid #ffff00;
+            box-shadow: 0 5px 20px rgba(255, 255, 0, 0.5);
+        }
+
+        .pad.purple {
+            background: linear-gradient(135deg, rgba(138, 43, 226, 0.8), rgba(138, 43, 226, 0.4));
+            border: 2px solid #8a2be2;
+            box-shadow: 0 5px 20px rgba(138, 43, 226, 0.5);
+        }
+
+        .pad.green {
+            background: linear-gradient(135deg, rgba(0, 255, 127, 0.8), rgba(0, 255, 127, 0.4));
+            border: 2px solid #00ff7f;
+            box-shadow: 0 5px 20px rgba(0, 255, 127, 0.5);
+        }
+
+        .pad.orange {
+            background: linear-gradient(135deg, rgba(255, 165, 0, 0.8), rgba(255, 165, 0, 0.4));
+            border: 2px solid #ffa500;
+            box-shadow: 0 5px 20px rgba(255, 165, 0, 0.5);
+        }
+
+        .pad.red {
+            background: linear-gradient(135deg, rgba(255, 0, 0, 0.8), rgba(255, 0, 0, 0.4));
+            border: 2px solid #ff0000;
+            box-shadow: 0 5px 20px rgba(255, 0, 0, 0.5);
+        }
+
+        .pad.blue {
+            background: linear-gradient(135deg, rgba(0, 127, 255, 0.8), rgba(0, 127, 255, 0.4));
+            border: 2px solid #007fff;
+            box-shadow: 0 5px 20px rgba(0, 127, 255, 0.5);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>EMPポン出しくん</h1>
+            <p>音源トリガーシステム</p>
+        </div>
+
+        <div class="controls">
+            <h2>パッド追加</h2>
+            <div class="add-pad-form">
+                <input type="text" id="padName" placeholder="パッド名 (例: キック)">
+                <input type="text" id="padUrl" placeholder="音源URL (.wav, .mp3)">
+                <select id="padColor">
+                    <option value="cyan">シアン</option>
+                    <option value="pink">ピンク</option>
+                    <option value="yellow">イエロー</option>
+                    <option value="purple">パープル</option>
+                    <option value="green">グリーン</option>
+                    <option value="orange">オレンジ</option>
+                    <option value="red">レッド</option>
+                    <option value="blue">ブルー</option>
+                </select>
+                <button onclick="addPad()">追加</button>
+            </div>
+        </div>
+
+        <div class="pad-grid-container">
+            <div class="pad-grid" id="padGrid">
+                <!-- 4x4 grid will be generated here -->
+            </div>
+        </div>
+
+        <div class="instructions">
+            <div class="instruction-item cyan">
+                <span>👆 左クリック</span>
+                <span>→ 再生/停止</span>
+            </div>
+            <div class="instruction-item pink">
+                <span>🖱️ 右クリック</span>
+                <span>→ ループON/OFF</span>
+            </div>
+            <div class="instruction-item orange">
+                <span>🔄 音源切替</span>
+                <span>→ 3秒フェードアウト</span>
+            </div>
+            <div class="instruction-item yellow">
+                <span>❌ 削除ボタン</span>
+                <span>→ パッド削除</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        class SoundPad {
+            constructor(name, url, color, position) {
+                this.id = Date.now() + Math.random();
+                this.name = name;
+                this.url = url;
+                this.color = color;
+                this.position = position; // 0-15 (4x4 grid)
+                this.isLooping = false;
+                this.isPlaying = false;
+                this.isFading = false;
+                this.audio = null;
+                this.fadeInterval = null;
+            }
+        }
+
+        class AudioManager {
+            constructor() {
+                this.gridSize = 16; // 4x4
+                this.storageKey = 'cyberPads_v2';
+                this.currentPlayingPad = null; // 現在再生中のパッド
+                this.fadeOutDuration = 3000; // 3秒
+                
+                // デフォルトパッドを直接初期化
+                this.pads = [
+                    // 1列目
+                    new SoundPad('パート①', 'https://www.dropbox.com/scl/fi/wopwja8im0rbz9mjxqv37/Akabane_P1.mp3?rlkey=l04k6mm1ng7w0cblxi3jbome4&st=l9wph6tq&dl=1', 'yellow', 0),
+                    new SoundPad('パート②', 'https://www.dropbox.com/scl/fi/j2khku132vi1olema5a7m/Akabane_P2.mp3?rlkey=m6ai03d7ia9hhbpckk2mjmj4h&st=i5178by3&dl=1', 'pink', 1),
+                    new SoundPad('パート③', 'https://www.dropbox.com/scl/fi/7ushe2r4cc9gw6h6ii4ex/Akabane_P3.mp3?rlkey=ebpxhf27c3gc98cgru9paietw&st=e1tbwdva&dl=1', 'yellow', 2),
+                    new SoundPad('パート④', 'https://www.dropbox.com/scl/fi/oltjtff4c56malj9tbudu/Akabane_P4.mp3?rlkey=5s0jddgamt1zsg9bclvgvnfxv&st=j0sb7s7g&dl=1', 'purple', 3),
+                    // 2列目
+                    new SoundPad('客入れBGM', 'https://www.dropbox.com/scl/fi/z8x9ksgahlkbl1hhrpnq1/Akabane_-BGM.mp3?rlkey=tjbkb3wrorurzkcsb2orysdmo&st=ivhu0xfq&dl=1', 'red', 4),
+                    new SoundPad('客出しBGM', 'https://www.dropbox.com/scl/fi/rcslh75iudmxn0t3dt5oi/Akabane_.mp3?rlkey=94kwjug9vvpmjit7hlexiwo1b&st=ri88zp6k&dl=1', 'red', 5)
+                ];
+                
+                this.render();
+            }
+
+            savePads() {
+                const data = this.pads.map(p => ({
+                    name: p.name,
+                    url: p.url,
+                    color: p.color,
+                    position: p.position
+                }));
+                localStorage.setItem(this.storageKey, JSON.stringify(data));
+            }
+
+            findEmptyPosition() {
+                for (let i = 0; i < this.gridSize; i++) {
+                    if (!this.pads.find(p => p.position === i)) {
+                        return i;
+                    }
+                }
+                return 0; // fallback
+            }
+
+            addPad(name, url, color) {
+                if (!name || !url) {
+                    alert('パッド名とURLを入力してください');
+                    return;
+                }
+                
+                // DropboxのURLを直接ダウンロード用に変換
+                if (url.includes('dropbox.com')) {
+                    url = url.replace('dl=0', 'dl=1');
+                }
+                
+                const position = this.findEmptyPosition();
+                const pad = new SoundPad(name, url, color, position);
+                this.pads.push(pad);
+                this.savePads();
+                this.render();
+            }
+
+            removePad(id) {
+                const pad = this.pads.find(p => p.id === id);
+                if (pad) {
+                    if (pad === this.currentPlayingPad) {
+                        this.currentPlayingPad = null;
+                    }
+                    if (pad.audio) {
+                        pad.audio.pause();
+                        pad.audio = null;
+                    }
+                    if (pad.fadeInterval) {
+                        clearInterval(pad.fadeInterval);
+                    }
+                }
+                this.pads = this.pads.filter(p => p.id !== id);
+                this.savePads();
+                this.render();
+            }
+
+            fadeOutPad(pad, callback) {
+                if (!pad.audio) {
+                    if (callback) callback();
+                    return;
+                }
+
+                pad.isFading = true;
+                this.render();
+
+                const startVolume = pad.audio.volume;
+                const fadeStep = startVolume / (this.fadeOutDuration / 50); // 50msごとに更新
+                
+                pad.fadeInterval = setInterval(() => {
+                    if (pad.audio.volume > fadeStep) {
+                        pad.audio.volume = Math.max(0, pad.audio.volume - fadeStep);
+                    } else {
+                        clearInterval(pad.fadeInterval);
+                        pad.fadeInterval = null;
+                        pad.audio.pause();
+                        pad.audio.currentTime = 0;
+                        pad.audio.volume = 1.0; // リセット
+                        pad.isPlaying = false;
+                        pad.isFading = false;
+                        if (callback) callback();
+                        this.render();
+                    }
+                }, 50);
+            }
+
+            stopCurrentPad(callback) {
+                if (this.currentPlayingPad && this.currentPlayingPad.isPlaying) {
+                    this.fadeOutPad(this.currentPlayingPad, callback);
+                } else {
+                    if (callback) callback();
+                }
+            }
+
+            togglePlayStop(id) {
+                const pad = this.pads.find(p => p.id === id);
+                if (!pad) return;
+
+                // 同じパッドをクリックした場合は停止
+                if (pad === this.currentPlayingPad && pad.isPlaying) {
+                    this.fadeOutPad(pad, () => {
+                        this.currentPlayingPad = null;
+                    });
+                    return;
+                }
+
+                // 別のパッドが再生中の場合、フェードアウトしてから再生
+                if (this.currentPlayingPad && this.currentPlayingPad !== pad) {
+                    this.stopCurrentPad(() => {
+                        this.playPad(pad);
+                    });
+                } else {
+                    this.playPad(pad);
+                }
+            }
+
+            playPad(pad) {
+                if (!pad.audio) {
+                    pad.audio = new Audio(pad.url);
+                    pad.audio.volume = 1.0;
+                    pad.audio.loop = pad.isLooping;
+                    
+                    // 再生終了時の処理
+                    pad.audio.addEventListener('ended', () => {
+                        if (!pad.isLooping) {
+                            pad.isPlaying = false;
+                            if (this.currentPlayingPad === pad) {
+                                this.currentPlayingPad = null;
+                            }
+                            this.render();
+                        }
+                    });
+                } else {
+                    pad.audio.currentTime = 0;
+                    pad.audio.volume = 1.0;
+                }
+                
+                pad.audio.play().catch(err => {
+                    console.error('再生エラー:', err);
+                    alert('音源の読み込みに失敗しました。');
+                    pad.isPlaying = false;
+                    this.render();
+                });
+                
+                pad.isPlaying = true;
+                this.currentPlayingPad = pad;
+                this.render();
+            }
+
+            toggleLoop(id) {
+                const pad = this.pads.find(p => p.id === id);
+                if (!pad) return;
+
+                pad.isLooping = !pad.isLooping;
+                if (pad.audio) {
+                    pad.audio.loop = pad.isLooping;
+                }
+                this.render();
+            }
+
+            render() {
+                const grid = document.getElementById('padGrid');
+                grid.innerHTML = '';
+
+                // Create all 16 grid cells (4x4)
+                for (let i = 0; i < this.gridSize; i++) {
+                    const pad = this.pads.find(p => p.position === i);
+                    
+                    if (pad) {
+                        // Create pad button
+                        const padElement = document.createElement('div');
+                        const classes = ['pad', pad.color];
+                        if (pad.isLooping) classes.push('looping');
+                        if (pad.isPlaying) classes.push('playing');
+                        if (pad.isFading) classes.push('fading');
+                        
+                        padElement.className = classes.join(' ');
+                        padElement.innerHTML = `
+                            <div class="pad-controls">
+                                <div class="pad-control-btn" onclick="event.stopPropagation(); audioManager.removePad(${pad.id})" title="削除">×</div>
+                            </div>
+                            <div class="pad-name">${pad.name}</div>
+                            <div class="pad-status">
+                                <div class="loop-indicator">🔁 ループ</div>
+                            </div>
+                        `;
+
+                        // 左クリック: 再生/停止
+                        padElement.addEventListener('click', (e) => {
+                            if (e.target.classList.contains('pad-control-btn')) return;
+                            e.preventDefault();
+                            padElement.classList.add('active');
+                            this.togglePlayStop(pad.id);
+                            
+                            setTimeout(() => {
+                                padElement.classList.remove('active');
+                            }, 100);
+                        });
+
+                        // 右クリック: ループ切り替え
+                        padElement.addEventListener('contextmenu', (e) => {
+                            e.preventDefault();
+                            this.toggleLoop(pad.id);
+                        });
+
+                        grid.appendChild(padElement);
+                    } else {
+                        // Create empty cell
+                        const emptyCell = document.createElement('div');
+                        emptyCell.className = 'empty-cell';
+                        grid.appendChild(emptyCell);
+                    }
+                }
+            }
+        }
+
+        // グローバルインスタンス
+        const audioManager = new AudioManager();
+
+        function addPad() {
+            const name = document.getElementById('padName').value.trim();
+            const url = document.getElementById('padUrl').value.trim();
+            const color = document.getElementById('padColor').value;
+
+            audioManager.addPad(name, url, color);
+
+            // フォームをクリア
+            document.getElementById('padName').value = '';
+            document.getElementById('padUrl').value = '';
+        }
+
+        // Enterキーで追加
+        document.getElementById('padUrl').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                addPad();
+            }
+        });
+    </script>
+</body>
+</html>
