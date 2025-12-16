@@ -2,13 +2,14 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>EMPポン出しくん</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>サイバーパッド - 音源トリガーシステム</title>
     <style>
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
         }
 
         body {
@@ -18,6 +19,7 @@
             color: white;
             overflow-x: hidden;
             position: relative;
+            touch-action: manipulation;
         }
 
         /* Grid background pattern */
@@ -65,6 +67,43 @@
             font-size: 0.9em;
             letter-spacing: 3px;
             margin-top: 10px;
+        }
+
+        .audio-unlock {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            z-index: 9999;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .audio-unlock.show {
+            display: flex;
+        }
+
+        .audio-unlock button {
+            padding: 20px 40px;
+            font-size: 1.5em;
+            background: linear-gradient(135deg, #00ffff, #ff00ff);
+            border: none;
+            border-radius: 10px;
+            color: white;
+            font-weight: bold;
+            cursor: pointer;
+            font-family: 'Courier New', monospace;
+            animation: pulse-button 2s infinite;
+        }
+
+        @keyframes pulse-button {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
         }
 
         .controls {
@@ -163,6 +202,7 @@
             user-select: none;
             min-height: 0;
             padding: 15px;
+            touch-action: manipulation;
         }
 
         .pad::before {
@@ -240,8 +280,8 @@
         }
 
         .pad-control-btn {
-            width: 25px;
-            height: 25px;
+            width: 30px;
+            height: 30px;
             border-radius: 50%;
             background: rgba(0, 0, 0, 0.8);
             border: 1px solid white;
@@ -250,7 +290,7 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 0.9em;
+            font-size: 1em;
             transition: all 0.2s;
         }
 
@@ -375,9 +415,16 @@
     </style>
 </head>
 <body>
+    <!-- Audio unlock overlay for mobile -->
+    <div id="audioUnlock" class="audio-unlock">
+        <h2 style="color: #00ffff; font-size: 1.5em;">音声を有効化</h2>
+        <p style="color: white;">タップして音声再生を開始</p>
+        <button onclick="unlockAudio()">🔊 音声ON</button>
+    </div>
+
     <div class="container">
         <div class="header">
-            <h1>EMPポン出しくん</h1>
+            <h1>サイバーパッド</h1>
             <p>音源トリガーシステム</p>
         </div>
 
@@ -408,11 +455,11 @@
 
         <div class="instructions">
             <div class="instruction-item cyan">
-                <span>👆 左クリック</span>
+                <span>👆 タップ</span>
                 <span>→ 再生/停止</span>
             </div>
             <div class="instruction-item pink">
-                <span>🖱️ 右クリック</span>
+                <span>⏱️ 長押し</span>
                 <span>→ ループON/OFF</span>
             </div>
             <div class="instruction-item orange">
@@ -427,36 +474,59 @@
     </div>
 
     <script>
+        let audioUnlocked = false;
+
+        // Check if mobile device
+        function isMobile() {
+            return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        }
+
+        // Show unlock overlay on mobile
+        window.addEventListener('load', () => {
+            if (isMobile()) {
+                document.getElementById('audioUnlock').classList.add('show');
+            }
+        });
+
+        // Unlock audio on mobile
+        function unlockAudio() {
+            const silentAudio = new Audio('data:audio/mp3;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4Ljc2LjEwMAAAAAAAAAAAAAAA//tQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWGluZwAAAA8AAAACAAADhAC7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7//////////////////////////////////////////////////////////////////8AAAAATGF2YzU4LjEzAAAAAAAAAAAAAAAAJAAAAAAAAAAAA4Qx+YK2AAAAAAD/+xDEAAP8AJcBxgAAPuwJW/kAAA7gAAAAAAAAAAAA');
+            silentAudio.play().then(() => {
+                audioUnlocked = true;
+                document.getElementById('audioUnlock').classList.remove('show');
+            }).catch(e => {
+                console.log('Audio unlock failed:', e);
+            });
+        }
+
         class SoundPad {
             constructor(name, url, color, position) {
                 this.id = Date.now() + Math.random();
                 this.name = name;
                 this.url = url;
                 this.color = color;
-                this.position = position; // 0-15 (4x4 grid)
+                this.position = position;
                 this.isLooping = false;
                 this.isPlaying = false;
                 this.isFading = false;
                 this.audio = null;
                 this.fadeInterval = null;
+                this.longPressTimer = null;
             }
         }
 
         class AudioManager {
             constructor() {
-                this.gridSize = 16; // 4x4
+                this.gridSize = 16;
                 this.storageKey = 'cyberPads_v2';
-                this.currentPlayingPad = null; // 現在再生中のパッド
-                this.fadeOutDuration = 3000; // 3秒
+                this.currentPlayingPad = null;
+                this.fadeOutDuration = 3000;
                 
-                // デフォルトパッドを直接初期化
                 this.pads = [
-                    // 1列目
                     new SoundPad('パート①', 'https://www.dropbox.com/scl/fi/wopwja8im0rbz9mjxqv37/Akabane_P1.mp3?rlkey=l04k6mm1ng7w0cblxi3jbome4&st=l9wph6tq&dl=1', 'yellow', 0),
                     new SoundPad('パート②', 'https://www.dropbox.com/scl/fi/j2khku132vi1olema5a7m/Akabane_P2.mp3?rlkey=m6ai03d7ia9hhbpckk2mjmj4h&st=i5178by3&dl=1', 'pink', 1),
                     new SoundPad('パート③', 'https://www.dropbox.com/scl/fi/7ushe2r4cc9gw6h6ii4ex/Akabane_P3.mp3?rlkey=ebpxhf27c3gc98cgru9paietw&st=e1tbwdva&dl=1', 'yellow', 2),
                     new SoundPad('パート④', 'https://www.dropbox.com/scl/fi/oltjtff4c56malj9tbudu/Akabane_P4.mp3?rlkey=5s0jddgamt1zsg9bclvgvnfxv&st=j0sb7s7g&dl=1', 'purple', 3),
-                    // 2列目
                     new SoundPad('客入れBGM', 'https://www.dropbox.com/scl/fi/z8x9ksgahlkbl1hhrpnq1/Akabane_-BGM.mp3?rlkey=tjbkb3wrorurzkcsb2orysdmo&st=ivhu0xfq&dl=1', 'red', 4),
                     new SoundPad('客出しBGM', 'https://www.dropbox.com/scl/fi/rcslh75iudmxn0t3dt5oi/Akabane_.mp3?rlkey=94kwjug9vvpmjit7hlexiwo1b&st=ri88zp6k&dl=1', 'red', 5)
                 ];
@@ -480,7 +550,7 @@
                         return i;
                     }
                 }
-                return 0; // fallback
+                return 0;
             }
 
             addPad(name, url, color) {
@@ -489,7 +559,6 @@
                     return;
                 }
                 
-                // DropboxのURLを直接ダウンロード用に変換
                 if (url.includes('dropbox.com')) {
                     url = url.replace('dl=0', 'dl=1');
                 }
@@ -530,7 +599,7 @@
                 this.render();
 
                 const startVolume = pad.audio.volume;
-                const fadeStep = startVolume / (this.fadeOutDuration / 50); // 50msごとに更新
+                const fadeStep = startVolume / (this.fadeOutDuration / 50);
                 
                 pad.fadeInterval = setInterval(() => {
                     if (pad.audio.volume > fadeStep) {
@@ -540,7 +609,7 @@
                         pad.fadeInterval = null;
                         pad.audio.pause();
                         pad.audio.currentTime = 0;
-                        pad.audio.volume = 1.0; // リセット
+                        pad.audio.volume = 1.0;
                         pad.isPlaying = false;
                         pad.isFading = false;
                         if (callback) callback();
@@ -561,7 +630,6 @@
                 const pad = this.pads.find(p => p.id === id);
                 if (!pad) return;
 
-                // 同じパッドをクリックした場合は停止
                 if (pad === this.currentPlayingPad && pad.isPlaying) {
                     this.fadeOutPad(pad, () => {
                         this.currentPlayingPad = null;
@@ -569,7 +637,6 @@
                     return;
                 }
 
-                // 別のパッドが再生中の場合、フェードアウトしてから再生
                 if (this.currentPlayingPad && this.currentPlayingPad !== pad) {
                     this.stopCurrentPad(() => {
                         this.playPad(pad);
@@ -584,8 +651,8 @@
                     pad.audio = new Audio(pad.url);
                     pad.audio.volume = 1.0;
                     pad.audio.loop = pad.isLooping;
+                    pad.audio.preload = 'auto';
                     
-                    // 再生終了時の処理
                     pad.audio.addEventListener('ended', () => {
                         if (!pad.isLooping) {
                             pad.isPlaying = false;
@@ -602,7 +669,7 @@
                 
                 pad.audio.play().catch(err => {
                     console.error('再生エラー:', err);
-                    alert('音源の読み込みに失敗しました。');
+                    alert('音源の読み込みに失敗しました。\nモバイルの場合は「音声ON」ボタンをタップしてください。');
                     pad.isPlaying = false;
                     this.render();
                 });
@@ -627,12 +694,10 @@
                 const grid = document.getElementById('padGrid');
                 grid.innerHTML = '';
 
-                // Create all 16 grid cells (4x4)
                 for (let i = 0; i < this.gridSize; i++) {
                     const pad = this.pads.find(p => p.position === i);
                     
                     if (pad) {
-                        // Create pad button
                         const padElement = document.createElement('div');
                         const classes = ['pad', pad.color];
                         if (pad.isLooping) classes.push('looping');
@@ -650,7 +715,7 @@
                             </div>
                         `;
 
-                        // 左クリック: 再生/停止
+                        // Click/Tap event
                         padElement.addEventListener('click', (e) => {
                             if (e.target.classList.contains('pad-control-btn')) return;
                             e.preventDefault();
@@ -662,7 +727,21 @@
                             }, 100);
                         });
 
-                        // 右クリック: ループ切り替え
+                        // Long press for loop (mobile)
+                        let longPressTimer;
+                        padElement.addEventListener('touchstart', (e) => {
+                            if (e.target.classList.contains('pad-control-btn')) return;
+                            longPressTimer = setTimeout(() => {
+                                this.toggleLoop(pad.id);
+                                navigator.vibrate && navigator.vibrate(50);
+                            }, 500);
+                        });
+
+                        padElement.addEventListener('touchend', () => {
+                            clearTimeout(longPressTimer);
+                        });
+
+                        // Right click for desktop
                         padElement.addEventListener('contextmenu', (e) => {
                             e.preventDefault();
                             this.toggleLoop(pad.id);
@@ -670,7 +749,6 @@
 
                         grid.appendChild(padElement);
                     } else {
-                        // Create empty cell
                         const emptyCell = document.createElement('div');
                         emptyCell.className = 'empty-cell';
                         grid.appendChild(emptyCell);
@@ -679,7 +757,6 @@
             }
         }
 
-        // グローバルインスタンス
         const audioManager = new AudioManager();
 
         function addPad() {
@@ -689,12 +766,10 @@
 
             audioManager.addPad(name, url, color);
 
-            // フォームをクリア
             document.getElementById('padName').value = '';
             document.getElementById('padUrl').value = '';
         }
 
-        // Enterキーで追加
         document.getElementById('padUrl').addEventListener('keypress', (e) => {
             if (e.key === 'Enter') {
                 addPad();
